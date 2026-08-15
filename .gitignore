@@ -1,0 +1,11 @@
+# 密钥
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# 本地运行数据
+volumes/
+data/

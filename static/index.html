@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>企业智能体平台 · Python/LangGraph</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+         background: linear-gradient(135deg, #1e3c72, #2a5298); color: #eaf0ff; min-height: 100vh; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 24px 18px 60px; }
+  h1 { font-size: 22px; margin: 0 0 2px; }
+  .sub { color: #b8c7ff; font-size: 13px; margin-bottom: 16px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .tabs button { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); color: #dbe6ff;
+        border-radius: 10px 10px 0 0; padding: 9px 18px; font-size: 14px; cursor: pointer; }
+  .tabs button.active { background: rgba(255,255,255,.2); font-weight: 600; }
+  .card { background: rgba(255,255,255,.08); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.15);
+        border-radius: 12px; padding: 16px; }
+  .examples { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .examples button { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2); color: #dbe6ff;
+        border-radius: 18px; padding: 5px 11px; font-size: 12px; cursor: pointer; }
+  .inputbar { display: flex; gap: 10px; }
+  input, textarea { width: 100%; padding: 11px 13px; border-radius: 9px; border: none; font-size: 14px; font-family: inherit; }
+  textarea { min-height: 150px; resize: vertical; }
+  .send { padding: 0 20px; border: none; border-radius: 9px; background: #ffd166; color: #333; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .send:disabled { opacity: .5; cursor: not-allowed; }
+  #chat { margin-bottom: 14px; }
+  .msg { margin: 12px 0; }
+  .msg.user { display: flex; flex-direction: column; align-items: flex-end; }
+  .msg.ai   { display: flex; flex-direction: column; align-items: flex-start; }
+  .msg .who { font-size: 12px; color: #9fb3ff; margin: 0 2px 3px; }
+  .bubble { display: inline-block; padding: 7px 10px; border-radius: 10px; max-width: 78%; white-space: pre-wrap; line-height: 1.5; font-size: 13px; text-align: left; }
+  .user .bubble { background: #ffd166; color: #333; border-radius: 14px 14px 4px 14px; }
+  .ai .bubble { background: rgba(255,255,255,.14); border-radius: 14px 14px 14px 4px; }
+  /* AI 消息里的富内容（SQL/表格/来源）保持满宽、不被气泡对齐挤压 */
+  .msg.ai .badges, .msg.ai .label, .msg.ai pre, .msg.ai table, .msg.ai .src { align-self: stretch; max-width: 100%; }
+  .badges { margin: 6px 0; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 9px; border-radius: 12px; margin-right: 6px; }
+  .b-data { background: #2e8b57; } .b-kb { background: #8a5cf6; } .b-chat { background: #778; } .b-rw { background: #444; }
+  .label { font-size: 12px; color: #9fb3ff; margin: 10px 0 5px; }
+  pre { background: rgba(0,0,0,.35); padding: 9px 11px; border-radius: 7px; overflow-x: auto; font-size: 12px; margin: 0 0 5px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px; }
+  th, td { border: 1px solid rgba(255,255,255,.18); padding: 5px 9px; text-align: left; }
+  th { background: rgba(255,255,255,.12); }
+  .src { font-size: 12px; color: #cdd8ff; }
+  .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .ghost { background: transparent; border: 1px solid rgba(255,255,255,.3); color: #dbe6ff; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 12px; }
+  .loading { color: #ffd166; } .err { color: #ff8a8a; } .ok { color: #9be89b; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row">
+    <div>
+      <h1>🤖 企业智能体平台</h1>
+      <div class="sub">主控 Agent 意图路由 · Text2SQL 数据分析 · RAG 知识库 · 多轮对话 · FastAPI + LangGraph + 智谱GLM</div>
+    </div>
+    <button class="ghost" id="newChat">＋ 新对话</button>
+  </div>
+
+  <div class="tabs">
+    <button class="active" data-tab="chat">💬 智能问答</button>
+    <button data-tab="kb">📚 知识库管理</button>
+  </div>
+
+  <!-- 智能问答 -->
+  <div class="card" id="tab-chat">
+    <div class="examples" id="examples">
+      <button>本月华南区的总销售额是多少</button>
+      <button>各区域本月销售额排名</button>
+      <button>公司年假最多有几天</button>
+      <button>核心工作时间是几点到几点</button>
+      <button>你好，你能做什么</button>
+    </div>
+    <div id="chat"></div>
+    <div class="inputbar">
+      <input id="q" placeholder="随便问：数据统计走 Text2SQL，制度问题走知识库，主控自动路由" />
+      <button class="send" id="send">发送</button>
+    </div>
+  </div>
+
+  <!-- 知识库管理 -->
+  <div class="card hidden" id="tab-kb">
+    <div class="label">文档来源（可选，如《员工考勤制度》）</div>
+    <input id="kbSource" placeholder="《员工考勤制度》" />
+    <div class="label">文档正文（粘贴制度/文档文本，入库后即可在「智能问答」里问）</div>
+    <textarea id="kbText" placeholder="例如：\n员工年假：入职满1年5天，满3年10天，满5年15天。\n核心工作时间为上午10点到下午4点。"></textarea>
+    <div class="inputbar" style="margin-top:10px">
+      <button class="send" id="ingest">入库</button>
+      <span id="kbMsg" style="align-self:center"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let sessionId = "s-" + Math.floor(Math.random() * 1e9);
+
+// —— Tab 切换 ——
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.remove("active"));
+  b.classList.add("active");
+  $("tab-chat").classList.toggle("hidden", b.dataset.tab !== "chat");
+  $("tab-kb").classList.toggle("hidden", b.dataset.tab !== "kb");
+});
+
+// —— 智能问答 ——
+document.querySelectorAll("#examples button").forEach(b =>
+  b.onclick = () => { $("q").value = b.textContent; send(); });
+$("send").onclick = send;
+$("q").addEventListener("keydown", e => { if (e.key === "Enter") send(); });
+$("newChat").onclick = () => { sessionId = "s-" + Math.floor(Math.random() * 1e9); $("chat").innerHTML = ""; };
+
+function addMsg(who, cls) {
+  const d = document.createElement("div");
+  d.className = "msg " + cls;
+  d.innerHTML = `<div class="who">${who}</div>`;
+  $("chat").appendChild(d);
+  return d;
+}
+
+async function send() {
+  const question = $("q").value.trim();
+  if (!question) return;
+  $("q").value = "";
+  $("send").disabled = true;
+  const u = addMsg("你", "user");
+  u.innerHTML += `<div class="bubble">${escapeHtml(question)}</div>`;
+  const a = addMsg("智能体", "ai");
+  a.innerHTML += `<div class="bubble loading">思考中（意图分类 → 路由 → 执行）…</div>`;
+  window.scrollTo(0, document.body.scrollHeight);
+  try {
+    const res = await fetch("/chat/ask", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, sessionId })
+    });
+    const d = await res.json();
+    let html = "";
+    const intentCls = { DATA: "b-data", KB: "b-kb", CHAT: "b-chat" }[d.intent] || "b-chat";
+    html += `<div class="badges"><span class="badge ${intentCls}">${d.intent} · ${escapeHtml(d.route || "")}</span>`;
+    if (d.rewritten) html += `<span class="badge b-rw">改写：${escapeHtml(d.rewritten)}</span>`;
+    html += "</div>";
+    html += `<div class="bubble">${escapeHtml(d.answer || "(无结论)")}</div>`;
+    const det = d.detail || {};
+    if (det.executedSqls && det.executedSqls.length) {
+      html += `<div class="label">执行的 SQL（含纠错重试）</div>` +
+        det.executedSqls.map(s => `<pre>${escapeHtml(s)}</pre>`).join("");
+      if (det.columns && det.columns.length && det.rows && det.rows.length) {
+        html += "<table><tr>" + det.columns.map(c => `<th>${escapeHtml(c)}</th>`).join("") + "</tr>";
+        html += det.rows.map(r => "<tr>" + det.columns.map(c => `<td>${escapeHtml(String(r[c] ?? ""))}</td>`).join("") + "</tr>").join("");
+        html += "</table>";
+      }
+    }
+    if (det.sources && det.sources.length) {
+      html += `<div class="label">引用来源</div><div class="src">` +
+        det.sources.map(s => `📄 ${escapeHtml(s.source)}（相似度 ${s.score}）`).join("<br>") + "</div>";
+    }
+    a.innerHTML = `<div class="who">智能体</div>` + html;
+  } catch (e) {
+    a.innerHTML = `<div class="who">智能体</div><div class="bubble err">请求失败：${escapeHtml(String(e))}</div>`;
+  } finally {
+    $("send").disabled = false;
+    window.scrollTo(0, document.body.scrollHeight);
+  }
+}
+
+// —— 知识库入库 ——
+$("ingest").onclick = async () => {
+  const text = $("kbText").value.trim();
+  if (!text) { $("kbMsg").innerHTML = '<span class="err">请先粘贴文档正文</span>'; return; }
+  $("ingest").disabled = true;
+  $("kbMsg").innerHTML = '<span class="loading">向量化入库中…</span>';
+  try {
+    const res = await fetch("/kb/ingest", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, source: $("kbSource").value.trim() })
+    });
+    const d = await res.json();
+    $("kbMsg").innerHTML = `<span class="ok">✅ 入库成功，切分 ${d.chunks} 个片段。去「智能问答」问它吧</span>`;
+    $("kbText").value = "";
+  } catch (e) {
+    $("kbMsg").innerHTML = '<span class="err">入库失败：' + escapeHtml(String(e)) + "</span>";
+  } finally {
+    $("ingest").disabled = false;
+  }
+};
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+</script>
+</body>
+</html>
